@@ -1,0 +1,95 @@
+<?php
+// Подключение и создание таблиц - как раньше (оставим без изменений)
+// ... (опущено для краткости, код из предыдущей версии остаётся)
+
+// Панель админа: Удаление темы и назначение рангов/ролей
+if (isset($_GET['del_topic']) && isset($_SESSION['user']) && $_SESSION['user']['is_admin']) {
+    $del_id = (int)$_GET['del_topic'];
+    $db->prepare("DELETE FROM topics WHERE id = ?")->execute([$del_id]);
+    $db->prepare("DELETE FROM comments WHERE topic_id = ?")->execute([$del_id]);
+    header("Location: ?"); exit;
+}
+if (isset($_POST['set_rank']) && $_SESSION['user']['is_admin']) {
+    $stmt = $db->prepare("UPDATE users SET rank = ?, role = ? WHERE username = ?");
+    $stmt->execute([$_POST['rank'], $_POST['role'], $_POST['target']]);
+    echo "Ранг и роль обновлены.";
+}
+?><!DOCTYPE html><html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Матрешка RP Форум</title>
+<style>
+body { background: #0d1117; color: #c9d1d9; font-family: sans-serif; padding: 20px; }
+.box { background: #161b22; padding: 15px; margin-bottom: 10px; border-radius: 6px; }
+input, textarea, select { width: 100%; padding: 8px; margin: 5px 0; background: #21262d; color: #fff; border: none; border-radius: 4px; }
+button { background: #238636; border: none; padding: 8px 12px; cursor: pointer; color: #fff; border-radius: 4px; }
+a { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.header { position: sticky; top: 0; background: #0d1117; padding: 10px; border-bottom: 1px solid #30363d; }
+</style>
+</head>
+<body>
+<div class="header">
+<h1>Форум Матрешка RP</h1>
+<?php if (isset($_SESSION['user'])): ?>
+<p>Добро пожаловать, <?= $_SESSION['user']['is_admin'] ? '[ADMIN] ' : '' ?><?= htmlspecialchars($_SESSION['user']['username']) ?> | <a href="?logout=1">Выход</a></p>
+<?php endif; ?>
+</div>
+<?php if (!isset($_SESSION['user'])): ?>
+<!-- Форма входа и регистрации (оставим без изменений) -->
+<?php else: ?>
+<div class="box">
+  <h3>Новая тема</h3>
+  <form method="POST">
+    <input name="title" placeholder="Заголовок" required>
+    <textarea name="content" placeholder="Текст..." required></textarea>
+    <button name="new_topic">Создать</button>
+  </form>
+</div>
+<?php if ($_SESSION['user']['is_admin']): ?>
+<div class="box">
+  <h3>Админ-панель</h3>
+  <form method="POST">
+    <input name="target" placeholder="Логин пользователя" required>
+    <input name="rank" placeholder="Ранг (например: Лидер)" required>
+    <input name="role" placeholder="Роль (например: support)" required>
+    <button name="set_rank">Назначить</button>
+  </form>
+</div>
+<?php endif; ?>
+<?php endif; ?>
+<h2>Темы</h2>
+<?php
+$topics = $db->query("SELECT topics.*, users.username, users.rank, users.role, users.is_admin FROM topics JOIN users ON users.id = topics.user_id ORDER BY topics.id DESC");
+foreach ($topics as $t):
+    $likeCount = $db->query("SELECT COUNT(*) FROM likes WHERE topic_id = {$t['id']}")->fetchColumn();
+?>
+<div class="box">
+  <strong><?= $t['is_admin'] ? '[ADMIN] ' : '' ?><?= htmlspecialchars($t['username']) ?> (<?= $t['rank'] ?>, <?= $t['role'] ?>)</strong>
+  <h4><?= htmlspecialchars($t['title']) ?></h4>
+  <p><?= nl2br(htmlspecialchars($t['content'])) ?></p>
+  <small>Лайков: <?= $likeCount ?> | <a href="?like=<?= $t['id'] ?>">Лайк</a></small>
+  <?php if (isset($_SESSION['user'])): ?>
+    <form method="POST">
+      <input type="hidden" name="topic_id" value="<?= $t['id'] ?>">
+      <textarea name="content" placeholder="Комментарий..." required></textarea>
+      <button name="comment">Ответить</button>
+    </form>
+  <?php endif; ?>
+  <?php
+  $comments = $db->prepare("SELECT comments.*, users.username FROM comments JOIN users ON users.id = comments.user_id WHERE topic_id = ? ORDER BY comments.id ASC");
+  $comments->execute([$t['id']]);
+  foreach ($comments as $c):
+  ?>
+  <div style="margin-left:20px; margin-top:10px;">
+    <strong><?= htmlspecialchars($c['username']) ?>:</strong>
+    <p><?= nl2br(htmlspecialchars($c['content'])) ?></p>
+  </div>
+  <?php endforeach; ?>
+  <?php if (isset($_SESSION['user']) && $_SESSION['user']['is_admin']): ?>
+    <p><a href="?ban=<?= $t['user_id'] ?>">[Бан]</a> | <a href="?del_topic=<?= $t['id'] ?>">[Удалить тему]</a></p>
+  <?php endif; ?>
+</div>
+<?php endforeach; ?>
+</body>
+</html>
